@@ -1,0 +1,51 @@
+modules = ["nodejs-20", "web"]
+[agent]
+expertMode = true
+integrations = ["javascript_database:1.0.0"]
+
+[nix]
+channel = "stable-25_05"
+
+[deployment]
+deploymentTarget = "autoscale"
+run = ["node", "./dist/index.cjs"]
+build = ["npm", "run", "build"]
+
+[userenv]
+
+[userenv.shared]
+DB_PASSWORD = "storquest01"
+DB_SERVER = "13.57.123.119"
+DB_USERNAME = "williamwarren"
+STORTRACK_BASEURL = "https://api.stortrack.com"
+STORTRACK_PASSWORD = "vhP6ZXrJ"
+STORTRACK_USERNAME = "cpj@williamwarren.com"
+WWG_MCP_API_KEY = "2bb017cb337c956ef62839eae0de6c17c0b5e31f8e75c574a5c3813c57563615"
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run dev"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[ports]]
+localPort = 5000
+externalPort = 80

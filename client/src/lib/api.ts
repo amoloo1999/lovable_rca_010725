@@ -1,7 +1,26 @@
-import { supabase } from "@/integrations/supabase/client";
-import type { Store, RateRecord } from "@/types/rca";
+import type { Store, RateRecord, SalesforceMatch } from "@/types/rca";
 
-// StorTrack API Functions
+async function apiRequest<T>(endpoint: string, body: { action: string; params: Record<string, any> }): Promise<T> {
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status}`);
+  }
+
+  const data = await response.json();
+  if (!data.success) {
+    throw new Error(data.error || 'Unknown error');
+  }
+
+  return data.data;
+}
+
 export async function searchStoresByAddress(params: {
   state: string;
   city: string;
@@ -9,24 +28,19 @@ export async function searchStoresByAddress(params: {
   storeName?: string;
   companyName?: string;
 }): Promise<Store[]> {
-  const { data, error } = await supabase.functions.invoke('stortrack-api', {
-    body: {
-      action: 'findStoresByAddress',
-      params: {
-        country: 'United States',
-        state: params.state,
-        city: params.city,
-        zip: params.zip,
-        storename: params.storeName || '',
-        companyname: params.companyName || '',
-      },
+  const data = await apiRequest<any[]>('/api/stortrack', {
+    action: 'findStoresByAddress',
+    params: {
+      country: 'United States',
+      state: params.state,
+      city: params.city,
+      zip: params.zip,
+      storename: params.storeName || '',
+      companyname: params.companyName || '',
     },
   });
 
-  if (error) throw error;
-  if (!data.success) throw new Error(data.error);
-
-  return data.data.map((store: any) => ({
+  return data.map((store: any) => ({
     storeId: store.storeid || store.id,
     masterId: store.masterid,
     storeName: store.storename || store.name || '',
@@ -44,24 +58,16 @@ export async function findCompetitors(params: {
   storeId: number;
   radius: number;
 }): Promise<{ subject: Store; competitors: Store[] }> {
-  const { data, error } = await supabase.functions.invoke('stortrack-api', {
-    body: {
-      action: 'findCompetitors',
-      params: {
-        storeid: params.storeId,
-        coveragezone: params.radius,
-      },
+  const data = await apiRequest<any>('/api/stortrack', {
+    action: 'findCompetitors',
+    params: {
+      storeid: params.storeId,
+      coveragezone: params.radius,
     },
   });
 
-  if (error) throw error;
-  if (!data.success) throw new Error(data.error);
+  const storeData = Array.isArray(data) ? data[0] : data;
 
-  const result = data.data;
-  
-  // The API returns an array with the subject store containing competitorstores
-  const storeData = Array.isArray(result) ? result[0] : result;
-  
   const subject: Store = {
     storeId: storeData.storeid,
     masterId: storeData.masterid,
@@ -73,7 +79,6 @@ export async function findCompetitors(params: {
     distance: 0,
   };
 
-  // Extract competitors from the nested competitorstores array
   const competitorsData = storeData.competitorstores || [];
   const competitors: Store[] = competitorsData.map((comp: any) => ({
     storeId: comp.storeid,
@@ -94,24 +99,18 @@ export async function fetchHistoricalData(params: {
   fromDate: string;
   toDate: string;
 }): Promise<RateRecord[]> {
-  const { data, error } = await supabase.functions.invoke('stortrack-api', {
-    body: {
-      action: 'fetchHistoricalData',
-      params: {
-        storeid: params.storeId,
-        from: params.fromDate,
-        to: params.toDate,
-      },
+  const data = await apiRequest<any[]>('/api/stortrack', {
+    action: 'fetchHistoricalData',
+    params: {
+      storeid: params.storeId,
+      from: params.fromDate,
+      to: params.toDate,
     },
   });
 
-  if (error) throw error;
-  if (!data.success) throw new Error(data.error);
-
-  // Transform API response to RateRecord format
   const records: RateRecord[] = [];
-  
-  for (const storeData of data.data) {
+
+  for (const storeData of data) {
     const rates = storeData.rates || storeData.rateinfo || [];
     for (const rate of rates) {
       records.push({
@@ -145,100 +144,34 @@ export async function fetchHistoricalData(params: {
   return records;
 }
 
-// WWG MCP Server Functions
-
-// Check if MCP server is healthy
 export async function checkMCPHealth(): Promise<{ healthy: boolean; status: number }> {
-  const { data, error } = await supabase.functions.invoke('database-query', {
-    body: { action: 'healthCheck', params: {} },
-  });
-
-  if (error) throw error;
-  return data.data;
+  return apiRequest('/api/database', { action: 'healthCheck', params: {} });
 }
 
-// Get available databases from MCP server
 export async function getMCPDatabases(): Promise<any[]> {
-  const { data, error } = await supabase.functions.invoke('database-query', {
-    body: { action: 'getDatabases', params: {} },
-  });
-
-  if (error) throw error;
-  if (!data.success) throw new Error(data.error);
-  return data.data;
+  return apiRequest('/api/database', { action: 'getDatabases', params: {} });
 }
 
-// Get sites with optional state/city filtering
 export async function getMCPSites(params?: { state?: string; city?: string }): Promise<any[]> {
-  const { data, error } = await supabase.functions.invoke('database-query', {
-    body: { action: 'getSites', params: params || {} },
-  });
-
-  if (error) throw error;
-  if (!data.success) throw new Error(data.error);
-  return data.data;
+  return apiRequest('/api/database', { action: 'getSites', params: params || {} });
 }
 
-// Query Stortrack data via MCP server
 export async function queryStortrackData(endpoint: string, queryParams?: Record<string, string>): Promise<any> {
-  const { data, error } = await supabase.functions.invoke('database-query', {
-    body: { action: 'getStortrackData', params: { endpoint, queryParams } },
-  });
-
-  if (error) throw error;
-  if (!data.success) throw new Error(data.error);
-  return data.data;
+  return apiRequest('/api/database', { action: 'getStortrackData', params: { endpoint, queryParams } });
 }
 
-// Generic database query via MCP
 export async function queryMCPDatabase(database: string, table: string, queryParams?: Record<string, string>): Promise<any> {
-  const { data, error } = await supabase.functions.invoke('database-query', {
-    body: { action: 'queryDatabase', params: { database, table, queryParams } },
-  });
-
-  if (error) throw error;
-  if (!data.success) throw new Error(data.error);
-  return data.data;
+  return apiRequest('/api/database', { action: 'queryDatabase', params: { database, table, queryParams } });
 }
 
-// Legacy functions - now routed through MCP server
 export async function getTrailing12MonthRates(params: {
   storeIds: number[];
   fromDate?: string;
   toDate?: string;
 }): Promise<{ ratesByStore: Record<number, RateRecord[]>; datesByStore: Record<number, string[]> }> {
-  const { data, error } = await supabase.functions.invoke('database-query', {
-    body: { action: 'getTrailing12MonthRates', params },
-  });
-
-  if (error) throw error;
-  if (!data.success) throw new Error(data.error);
-  return data.data;
+  return apiRequest('/api/database', { action: 'getTrailing12MonthRates', params });
 }
 
-export async function getSalesforceMatches(params: {
-  storeName: string;
-  streetAddress: string;
-  topN?: number;
-}): Promise<Array<{
-  salesforceName: string;
-  parsedStoreName: string;
-  parsedAddress: string;
-  squareFootage: number | null;
-  yearBuilt: number | null;
-  combinedScore: number;
-}>> {
-  const { data, error } = await supabase.functions.invoke('database-query', {
-    body: { action: 'getSalesforceMatches', params },
-  });
-
-  if (error) throw error;
-  if (!data.success) throw new Error(data.error);
-  return data.data;
-}
-
-// Fetch store metadata (Year Built, Square Footage) from Salesforce_rawData by matching address
-// Uses fuzzy matching logic similar to RCA_template.py
 export async function getSalesforceMetadataByAddress(params: {
   street: string;
   city: string;
@@ -252,43 +185,34 @@ export async function getSalesforceMetadataByAddress(params: {
   matchScore?: number;
 } | null> {
   try {
-    const { data, error } = await supabase.functions.invoke('database-query', {
-      body: { 
-        action: 'getSalesforceMetadataByAddress', 
-        params 
-      },
+    const results = await apiRequest<any[]>('/api/database', {
+      action: 'getSalesforceMetadataByAddress',
+      params
     });
 
-    if (error) throw error;
-    if (!data.success) return null;
-    
-    // Parse the response - returns scored matches like RCA_template.py
-    const results = data.data;
     if (!results || (Array.isArray(results) && results.length === 0)) {
       return null;
     }
-    
-    // Get the best match (first result, highest combined score)
+
     const record = Array.isArray(results) ? results[0] : results;
-    
-    // Parse Year_Built__c and Net_RSF__c properly
+
     let yearBuilt: number | null = null;
     let squareFootage: number | null = null;
-    
+
     if (record.Year_Built__c) {
       const parsed = parseInt(record.Year_Built__c, 10);
       if (!isNaN(parsed) && parsed >= 1900 && parsed <= 2030) {
         yearBuilt = parsed;
       }
     }
-    
+
     if (record.Net_RSF__c) {
       const parsed = parseFloat(record.Net_RSF__c);
       if (!isNaN(parsed) && parsed > 0) {
         squareFootage = parsed;
       }
     }
-    
+
     return {
       yearBuilt,
       squareFootage,
@@ -301,10 +225,6 @@ export async function getSalesforceMetadataByAddress(params: {
   }
 }
 
-// Fetch ALL Salesforce matches for a store so user can select the correct one
-// Returns top matches with scores like RCA_template.py prompt_for_salesforce_match
-import type { SalesforceMatch } from '@/types/rca';
-
 export async function getSalesforceMatches(params: {
   street: string;
   city: string;
@@ -313,23 +233,16 @@ export async function getSalesforceMatches(params: {
   storeName?: string;
 }): Promise<SalesforceMatch[]> {
   try {
-    const { data, error } = await supabase.functions.invoke('database-query', {
-      body: { 
-        action: 'getSalesforceMetadataByAddress', 
-        params 
-      },
+    const results = await apiRequest<SalesforceMatch[]>('/api/database', {
+      action: 'getSalesforceMetadataByAddress',
+      params
     });
 
-    if (error) throw error;
-    if (!data.success) return [];
-    
-    const results = data.data;
     if (!results || !Array.isArray(results)) {
       return [];
     }
-    
-    // Return all matches for user to select from
-    return results as SalesforceMatch[];
+
+    return results;
   } catch (error) {
     console.error('Failed to fetch Salesforce matches:', error);
     return [];
@@ -344,11 +257,5 @@ export async function getStoreInfo(storeIds: number[]): Promise<Record<number, {
   state: string;
   zip: string;
 }>> {
-  const { data, error } = await supabase.functions.invoke('database-query', {
-    body: { action: 'getStoreInfo', params: { storeIds } },
-  });
-
-  if (error) throw error;
-  if (!data.success) throw new Error(data.error);
-  return data.data;
+  return apiRequest('/api/database', { action: 'getStoreInfo', params: { storeIds } });
 }
