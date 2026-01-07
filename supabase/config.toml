@@ -1,0 +1,7 @@
+project_id = "rkzgjvgjrvkrgqhkqdtf"
+
+[functions.stortrack-api]
+verify_jwt = false
+
+[functions.database-query]
+verify_jwt = false
