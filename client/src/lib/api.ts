@@ -160,8 +160,8 @@ export async function queryStortrackData(endpoint: string, queryParams?: Record<
   return apiRequest('/api/database', { action: 'getStortrackData', params: { endpoint, queryParams } });
 }
 
-export async function queryMCPDatabase(database: string, table: string, queryParams?: Record<string, string>): Promise<any> {
-  return apiRequest('/api/database', { action: 'queryDatabase', params: { database, table, queryParams } });
+export async function queryMCPDatabase(database: string, table: string, filters?: Record<string, string>, limit?: number): Promise<any> {
+  return apiRequest('/api/database', { action: 'queryDatabase', params: { database, table, filters, limit } });
 }
 
 export async function getTrailing12MonthRates(params: {
